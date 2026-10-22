@@ -56,3 +56,7 @@ rm -rf ~/Applications/ClaudeMenu.app ~/.claude/claude-menu
 ```
 
 Then remove the `statusLine` entry from `~/.claude/settings.json`, or restore the `settings.json.bak-claude-menu` backup.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
