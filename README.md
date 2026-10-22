@@ -50,12 +50,15 @@ The app checks for changes every 2 seconds. Everything stays on your machine, an
 
 ## Uninstall
 
-```sh
-pkill -x ClaudeMenu
-rm -rf ~/Applications/ClaudeMenu.app ~/.claude/claude-menu
-```
+1. If **Open at login** is on, uncheck it in the panel first. Otherwise a stale item can stay in System Settings → Login Items.
+2. Quit the app and remove its files:
 
-Then remove the `statusLine` entry from `~/.claude/settings.json`, or restore the `settings.json.bak-claude-menu` backup.
+   ```sh
+   pkill -x ClaudeMenu
+   rm -rf ~/Applications/ClaudeMenu.app ~/.claude/claude-menu
+   ```
+
+3. Remove the `statusLine` entry from `~/.claude/settings.json`. Don't restore `settings.json.bak-claude-menu` for this: it's a copy from install time and would undo any settings you've changed since.
 
 ## License
 
