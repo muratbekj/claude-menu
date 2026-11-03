@@ -50,3 +50,35 @@ func base64url(_ s: String) -> String {
     #expect(JWT.expiry("a.!!!.b") == nil)
     #expect(JWT.expiry("x.\(base64url(#"{"sub":"u"}"#)).y") == nil)
 }
+
+@Test func rejectsNonFiniteNumbers() {
+    for bad in [#""apiPercentUsed":"Infinity""#, #""apiPercentUsed":"NaN""#] {
+        let json = cursorFixture.replacingOccurrences(of: #""apiPercentUsed":14.71111111111111"#, with: bad)
+        #expect(json != cursorFixture)
+        #expect(throws: CursorDecodeError.self) { try CursorUsage.decode(Data(json.utf8), fetchedAt: Date()) }
+    }
+    let farEnd = cursorFixture.replacingOccurrences(of: #""billingCycleEnd":"1794230563000""#, with: #""billingCycleEnd":"1e300""#)
+    #expect(throws: CursorDecodeError.self) { try CursorUsage.decode(Data(farEnd.utf8), fetchedAt: Date()) }
+}
+
+@Test func percentLeftClamps() {
+    #expect(LimitRow.percentLeft(42) == 58)
+    #expect(LimitRow.percentLeft(-3) == 100)
+    #expect(LimitRow.percentLeft(112) == 0)
+}
+
+@Test func liveSessionNeverPersists() {
+    let config = CursorDeps.session.configuration
+    #expect(config.urlCache == nil)
+    #expect(config.httpCookieStorage == nil)
+    #expect(config.httpShouldSetCookies == false)
+    #expect(config.urlCredentialStorage == nil)
+}
+
+@Test func redirectsAreRefused() async {
+    let guardDelegate = NoRedirects()
+    let response = HTTPURLResponse(url: URL(string: "https://api2.cursor.sh/x")!, statusCode: 302, httpVersion: nil, headerFields: nil)!
+    let next = await guardDelegate.urlSession(CursorDeps.session, task: CursorDeps.session.dataTask(with: URL(string: "https://api2.cursor.sh/x")!),
+                                              willPerformHTTPRedirection: response, newRequest: URLRequest(url: URL(string: "https://evil.example/")!))
+    #expect(next == nil)
+}

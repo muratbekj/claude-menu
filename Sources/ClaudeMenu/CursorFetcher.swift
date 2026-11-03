@@ -51,12 +51,14 @@ actor CursorFetcher {
     }
 
     func fetch(now: Date) async -> CursorState {
-        var sawRejection = false
+        // Only Cursor Agent's own login being rejected means "run cursor-agent". A stale editor
+        // login alone (no agent login, or Keychain access denied) isn't something to nag about.
+        var agentLoginRejected = false
 
         switch await tryKeychain(now: now) {
         case .ok(let usage, let token)?: return await succeeded(usage, token: token)
         case .failed(let problem)?: return failed(problem, now: now)
-        case .rejected?: sawRejection = true
+        case .rejected?: agentLoginRejected = true
         case nil: break
         }
 
@@ -64,11 +66,11 @@ actor CursorFetcher {
             switch await attempt(token, now: now) {
             case .ok(let usage, let token): return await succeeded(usage, token: token)
             case .failed(let problem): return failed(problem, now: now)
-            case .rejected: sawRejection = true
+            case .rejected: break
             }
         }
 
-        if sawRejection { return failed(.loginExpired, now: now) }
+        if agentLoginRejected { return failed(.loginExpired, now: now) }
         lastUsage = nil
         return CursorState()
     }
@@ -76,19 +78,17 @@ actor CursorFetcher {
     /// Tries the cached Keychain token; after a rejection, re-reads the Keychain once in case
     /// Cursor Agent has saved a fresh token since. Nil when there is no Keychain token at all.
     private func tryKeychain(now: Date) async -> Attempt? {
-        var token = cachedToken ?? readKeychain()
-        guard token != nil else { return nil }
+        // Cached as soon as it's read, and dropped only when Cursor rejects it, so network
+        // trouble never causes another Keychain read (or another macOS prompt).
+        if cachedToken == nil { cachedToken = readKeychain() }
+        guard var current = cachedToken else { return nil }
         for pass in 0..<2 {
-            guard let current = token else { break }
             let result = await attempt(current, now: now)
-            if case .rejected = result {
-                cachedToken = nil
-                guard pass == 0, let fresh = readKeychain(), fresh != current else { return .rejected }
-                token = fresh
-                continue
-            }
-            if case .ok = result { cachedToken = current }
-            return result
+            guard case .rejected = result else { return result }
+            cachedToken = nil
+            guard pass == 0, let fresh = readKeychain(), fresh != current else { return .rejected }
+            cachedToken = fresh
+            current = fresh
         }
         return .rejected
     }
@@ -142,7 +142,27 @@ actor CursorFetcher {
 
 // MARK: - Live dependencies
 
+/// Cursor's API doesn't redirect; refusing redirects keeps the token from following one to another host.
+final class NoRedirects: NSObject, URLSessionTaskDelegate {
+    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+                    newRequest request: URLRequest) async -> URLRequest? {
+        nil
+    }
+}
+
 extension CursorDeps {
+    /// A private session with no disk cache, cookie store or credential store, so the token
+    /// (which a cached request would archive) is never written to disk.
+    static let session: URLSession = {
+        let config = URLSessionConfiguration.ephemeral
+        config.urlCache = nil
+        config.httpCookieStorage = nil
+        config.httpShouldSetCookies = false
+        config.urlCredentialStorage = nil
+        config.requestCachePolicy = .reloadIgnoringLocalCacheData
+        return URLSession(configuration: config, delegate: NoRedirects(), delegateQueue: nil)
+    }()
+
     static let live = CursorDeps(
         keychainToken: {
             let query: [String: Any] = [
@@ -190,14 +210,14 @@ extension CursorDeps {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.setValue("1", forHTTPHeaderField: "Connect-Protocol-Version")
             request.httpBody = Data("{}".utf8)
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await session.data(for: request)
             return (status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: data)
         },
         plan: { token in
             var request = URLRequest(url: URL(string: "https://api2.cursor.sh/auth/full_stripe_profile")!)
             request.timeoutInterval = 15
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-            guard let (data, response) = try? await URLSession.shared.data(for: request),
+            guard let (data, response) = try? await session.data(for: request),
                   (response as? HTTPURLResponse)?.statusCode == 200,
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let type = json["membershipType"] as? String, !type.isEmpty

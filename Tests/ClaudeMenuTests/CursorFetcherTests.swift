@@ -171,3 +171,28 @@ private final class Fake: @unchecked Sendable {
     #expect(await fetcher.fetch(now: now).usage?.plan == "Pro Student")
     #expect(fake.planCalls == 1)
 }
+
+@Test func deniedKeychainWithStaleEditorStaysHidden() async {
+    let fake = Fake()
+    fake.keychain = [{ throw KeychainError.denied }]
+    fake.editorToken = editor
+    fake.respond = { _ in rejected }
+    #expect(await CursorFetcher(deps: fake.deps).fetch(now: now) == CursorState())
+}
+
+@Test func editorOnlyRejectedStaysHidden() async {
+    let fake = Fake()
+    fake.editorToken = editor
+    fake.respond = { _ in rejected }
+    #expect(await CursorFetcher(deps: fake.deps).fetch(now: now) == CursorState())
+}
+
+@Test func offlineTwiceReadsKeychainOnce() async {
+    let fake = Fake()
+    fake.keychain = [{ validA }]
+    fake.respond = { _ in throw URLError(.notConnectedToInternet) }
+    let fetcher = CursorFetcher(deps: fake.deps)
+    _ = await fetcher.fetch(now: now)
+    _ = await fetcher.fetch(now: now.addingTimeInterval(300))
+    #expect(fake.keychainReads == 1)
+}

@@ -449,7 +449,13 @@ struct LimitRow: View {
     let usedPercent: Double
     let resetsAt: Date?
 
-    private var left: Int { max(0, 100 - Int(usedPercent.rounded())) }
+    private var left: Int { Self.percentLeft(usedPercent) }
+
+    /// Percent left, clamped to 0...100.
+    static func percentLeft(_ used: Double) -> Int {
+        guard used.isFinite else { return 0 }
+        return Int(min(100, max(0, 100 - used)).rounded())
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {

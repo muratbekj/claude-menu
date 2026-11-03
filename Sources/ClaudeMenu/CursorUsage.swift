@@ -22,7 +22,9 @@ extension CursorUsage {
               let api = number(plan["apiPercentUsed"]),
               let auto = number(plan["autoPercentUsed"]),
               let total = number(plan["totalPercentUsed"]),
-              let endMillis = number(json["billingCycleEnd"])
+              let endMillis = number(json["billingCycleEnd"]),
+              [api, auto, total].allSatisfy(\.isFinite),
+              endMillis.isFinite, endMillis > 0, endMillis < 1e14  // before the year 5000
         else { throw CursorDecodeError.badShape }
         return CursorUsage(premiumPercent: api, cursorModelsPercent: auto, totalPercent: total,
                            cycleEnd: Date(timeIntervalSince1970: endMillis / 1000), plan: nil, fetchedAt: fetchedAt)
@@ -75,7 +77,7 @@ enum CursorBadge: Equatable {
 
     var displayPercent: Int {
         switch self {
-        case .premium(let p), .cursorModels(let p): return min(100, max(0, Int(p.rounded())))
+        case .premium(let p), .cursorModels(let p): return p.isFinite ? Int(min(100, max(0, p)).rounded()) : 0
         case .exhausted: return 100
         }
     }
