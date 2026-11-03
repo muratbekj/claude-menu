@@ -279,13 +279,17 @@ struct PanelView: View {
     private var header: some View {
         HStack(spacing: 8) {
             HeaderMark()
-            Text("Claude Code")
+            Text(Self.title(cursorShown: store.cursor.isShown))
                 .font(.system(size: 14, weight: .semibold))
             Spacer()
             Text(summary)
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
         }
+    }
+
+    static func title(cursorShown: Bool) -> String {
+        cursorShown ? "Claude Code + Cursor" : "Claude Code"
     }
 
     private var summary: String {
@@ -349,9 +353,7 @@ struct UsageCard: View {
     let cursor: CursorState
 
     /// With no Cursor login on this Mac, the card looks exactly as it did before Cursor support.
-    private var showsCursor: Bool {
-        cursor.usage != nil || cursor.problem == .loginExpired || cursor.problem == .unavailable
-    }
+    private var showsCursor: Bool { cursor.isShown }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {

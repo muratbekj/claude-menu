@@ -8,6 +8,13 @@ struct CursorState: Equatable {
     var problem: CursorProblem?
 }
 
+extension CursorState {
+    /// Whether the panel has anything to show for Cursor. Users without a Cursor login see no Cursor UI.
+    var isShown: Bool {
+        usage != nil || problem == .loginExpired || problem == .unavailable
+    }
+}
+
 enum CursorProblem: Equatable {
     case loginExpired
     case unavailable
