@@ -1,12 +1,13 @@
 # ClaudeMenu
 
-A macOS menu bar app for [Claude Code](https://claude.com/claude-code). It shows which sessions are working or waiting for you, how full each context window is, and how much of your usage limits is left.
+A macOS menu bar app for [Claude Code](https://claude.com/claude-code). It shows which sessions are working or waiting for you, how full each context window is, and how much of your usage limits is left. If you also use [Cursor Agent](https://cursor.com/cli), it shows your Cursor limits too.
 
 ## Features
 
 - **Menu bar icon:** shows Clawd with your 5-hour usage %. When a session needs you, Clawd turns orange, waves, and shows how many sessions are waiting. When you're out of usage, Clawd lies still with X'd-out eyes.
 - **Usage limits:** session (5 hours) and weekly (7 days) usage, with reset times.
 - **Sessions:** lists the sessions that need you and the ones that are working, each with its context window usage. Click a session to bring its terminal or editor to the front.
+- **Cursor usage:** Premium models and Cursor models (Auto, Composer, Grok) usage, plus the date your billing cycle resets. In the menu bar, Clawd stands on a little Cursor cube, and the number after the slash is your Premium models usage. Once Premium runs out it switches to Cursor models and the cube's top goes hollow. When both are used up, the cube turns grey.
 - **Open at login:** a checkbox in the panel.
 
 ## Requirements
@@ -14,6 +15,7 @@ A macOS menu bar app for [Claude Code](https://claude.com/claude-code). It shows
 - macOS 14 or later
 - Swift 5.9 or later (Xcode or the Command Line Tools)
 - Claude Code
+- Cursor Agent (optional, for Cursor usage)
 
 ## Install
 
@@ -40,13 +42,24 @@ input=$(cat); printf '%s' "$input" | ~/.claude/claude-menu/statusline.sh
 # then use "$input" instead of reading stdin
 ```
 
+### Cursor
+
+Cursor usage needs Cursor Agent to be logged in (`cursor-agent login`). On first launch, macOS asks whether ClaudeMenu may use `cursor-access-token` from your Keychain. Click **Always Allow**. The app is self-signed, so macOS may ask again after you rebuild it with `install.sh`, or after Cursor Agent renews its login.
+
+Without a Cursor login, ClaudeMenu looks exactly as it does without Cursor.
+
 ## How it works
 
 - **Sessions** come from `~/.claude/sessions/*.json`, which Claude Code writes itself.
 - **Context and usage limits** come from the status line hook. `statusline.sh` saves each session's status line payload to `~/.claude/claude-menu/status/<session_id>.json` and prints nothing.
 - **Background sessions** don't run the status line, so for those the app estimates context usage from the latest token counts in the session's transcript.
 
-The app checks for changes every 2 seconds. Everything stays on your machine, and the app makes no network requests.
+The app checks Claude Code for changes every 2 seconds. Claude data is read locally and never leaves your machine.
+
+- **Cursor usage** is the one network request the app makes. Every 5 minutes, and when you open the panel, it asks Cursor's API (`api2.cursor.sh`) for your usage.
+- **Login:** it uses the login Cursor Agent already saved in your Keychain, or the Cursor editor's saved login as a fallback.
+- **The token** is kept in memory only. It's never written anywhere or sent anywhere else, and the app never renews it.
+- **If the login expires,** the panel asks you to run `cursor-agent` once.
 
 ## Uninstall
 
