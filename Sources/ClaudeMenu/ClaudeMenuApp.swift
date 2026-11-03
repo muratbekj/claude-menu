@@ -508,9 +508,15 @@ struct SessionRow: View {
         HStack(spacing: 10) {
             StatusDot(state: session.state)
             VStack(alignment: .leading, spacing: 1) {
-                Text(session.name)
-                    .font(.system(size: 13, weight: .medium))
-                    .lineLimit(1)
+                HStack(spacing: 5) {
+                    if session.source == .cursor {
+                        Image(nsImage: CursorMark.image(height: 10, color: .secondaryLabelColor, style: .normal))
+                            .help("Cursor Agent")
+                    }
+                    Text(session.name)
+                        .font(.system(size: 13, weight: .medium))
+                        .lineLimit(1)
+                }
                 Text(subtitle)
                     .font(.system(size: 11))
                     .foregroundStyle(subtitleColor)

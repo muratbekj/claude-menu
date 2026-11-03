@@ -1,12 +1,13 @@
 # ClaudeMenu
 
-A macOS menu bar app for [Claude Code](https://claude.com/claude-code). It shows which sessions are working or waiting for you, how full each context window is, and how much of your usage limits is left. If you also use [Cursor Agent](https://cursor.com/cli), it shows your Cursor limits too.
+A macOS menu bar app for [Claude Code](https://claude.com/claude-code). It shows which sessions are working or waiting for you, how full each context window is, and how much of your usage limits is left. If you also use [Cursor Agent](https://cursor.com/cli), it shows your Cursor sessions and limits too.
 
 ## Features
 
 - **Menu bar icon:** shows Clawd with your 5-hour usage %. When a session needs you, Clawd turns orange, waves, and shows how many sessions are waiting. When you're out of usage, Clawd lies still with X'd-out eyes.
 - **Usage limits:** session (5 hours) and weekly (7 days) usage, with reset times.
 - **Sessions:** lists the sessions that need you and the ones that are working, each with its context window usage. Click a session to bring its terminal or editor to the front.
+- **Cursor sessions:** `cursor-agent` sessions in the terminal show up in the same list, marked with a little Cursor cube. They count as needing you while Cursor is asking for an approval, and as working while it's replying.
 - **Cursor usage:** Premium models and Cursor models (Auto, Composer, Grok) usage, plus the date your billing cycle resets. In the menu bar, Clawd stands on a little Cursor cube, and the number after the slash is your Premium models usage. Once Premium runs out it switches to Cursor models and the cube's top goes hollow. When both are used up, the cube turns grey.
 - **Open at login:** a checkbox in the panel.
 
@@ -56,6 +57,7 @@ Without a Cursor login, ClaudeMenu looks exactly as it does without Cursor.
 
 The app checks Claude Code for changes every 2 seconds. Claude data is read locally and never leaves your machine.
 
+- **Cursor sessions** come from the debug log each running `cursor-agent` writes to `$TMPDIR/cursor-agent-logs-<uid>/`, plus the chat title from `~/.cursor/chats/`. That log is internal to Cursor, so if an update changes it, Cursor sessions stop appearing until ClaudeMenu catches up. Chats in the Cursor editor aren't shown.
 - **Cursor usage** is the one network request the app makes. Every 5 minutes, and when you open the panel, it asks Cursor's API (`api2.cursor.sh`) for your usage.
 - **Login:** it uses the login Cursor Agent already saved in your Keychain, or the Cursor editor's saved login as a fallback.
 - **The token** is kept in memory only. It's never written anywhere or sent anywhere else, and the app never renews it.
