@@ -91,16 +91,27 @@ enum MenuBarIcon {
     /// Waving orange Clawd + count when a session needs you; otherwise a template Clawd + 5h usage.
     @MainActor
     static func render(store: Store, pose: ClaudeMark.Pose) -> NSImage {
+        let badge = store.cursorBadge
         let waiting = store.waiting.count
         if waiting > 0 {
-            return draw(text: "\(waiting)", color: .systemOrange, pose: pose)
+            return draw(text: "\(waiting)", color: .systemOrange, pose: pose, badge: badge)
         }
-        return draw(text: store.usage?.fiveHour.map { "\(Int($0.usedPercent.rounded()))%" }, color: nil, pose: pose)
+        return draw(text: text(claudeUsed: store.usage?.fiveHour?.usedPercent, badge: badge), color: nil, pose: pose, badge: badge)
     }
 
-    private static func draw(text: String?, color: NSColor?, pose: ClaudeMark.Pose) -> NSImage {
+    /// "42%" for Claude alone; "42/15" with Cursor's number after the slash.
+    static func text(claudeUsed: Double?, badge: CursorBadge?) -> String? {
+        let claude = claudeUsed.map { "\(Int($0.rounded()))" }
+        guard let badge else { return claude.map { "\($0)%" } }
+        return "\(claude ?? "–")/\(badge.displayPercent)"
+    }
+
+    static func draw(text: String?, color: NSColor?, pose: ClaudeMark.Pose, badge: CursorBadge?) -> NSImage {
         let tint = color ?? .black
-        let mark = ClaudeMark.image(height: 13, color: tint, pose: pose)
+        let mark = badge.map {
+            // In the coloured (waiting) image the cube keeps the menu bar's own text colour.
+            standingOnCube(tint: tint, cube: color == nil ? .black : .labelColor, pose: pose, badge: $0)
+        } ?? ClaudeMark.image(height: 13, color: tint, pose: pose)
         let attr = NSAttributedString(string: text ?? "", attributes: [
             .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold),
             .foregroundColor: tint,
@@ -117,6 +128,34 @@ enum MenuBarIcon {
         }
         image.isTemplate = color == nil
         return image
+    }
+
+    /// Clawd standing on the Cursor cube. The cube's style says which Cursor pool the number is.
+    private static func standingOnCube(tint: NSColor, cube: NSColor, pose: ClaudeMark.Pose, badge: CursorBadge) -> NSImage {
+        let style: CursorMark.Style
+        switch badge {
+        case .premium: style = .normal
+        case .cursorModels: style = .hollowTop
+        case .exhausted: style = .greyed
+        }
+        let cubeImage = CursorMark.image(height: 11, color: cube, style: style)
+        let clawd = ClaudeMark.image(height: 7, color: tint, pose: pose)
+        let feetOverlap: CGFloat = 1.4  // Clawd's leg row
+        let size = NSSize(width: max(cubeImage.size.width, clawd.size.width),
+                          height: cubeImage.size.height + clawd.size.height - feetOverlap)
+        return NSImage(size: size, flipped: false) { rect in
+            cubeImage.draw(in: NSRect(x: (rect.width - cubeImage.size.width) / 2, y: 0,
+                                      width: cubeImage.size.width, height: cubeImage.size.height))
+            let clawdRect = NSRect(x: (rect.width - clawd.size.width) / 2, y: cubeImage.size.height - feetOverlap,
+                                   width: clawd.size.width, height: clawd.size.height)
+            // Cut a thin gap around Clawd so it stands out from the cube in a one-colour image.
+            let gap: CGFloat = 0.7
+            for (dx, dy) in [(-gap, 0), (gap, 0), (0, -gap), (-gap, -gap), (gap, -gap)] {
+                clawd.draw(in: clawdRect.offsetBy(dx: dx, dy: dy), from: .zero, operation: .destinationOut, fraction: 1)
+            }
+            clawd.draw(in: clawdRect)
+            return true
+        }
     }
 }
 
@@ -214,7 +253,7 @@ struct PanelView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
-            UsageCard(usage: store.usage)
+            UsageCard(usage: store.usage, cursor: store.cursor)
 
             if store.waiting.isEmpty && store.busy.isEmpty {
                 Text("No sessions working right now")
@@ -233,19 +272,24 @@ struct PanelView: View {
         .frame(width: 340)
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
             Waver.shared.greet()
+            store.panelOpened()
         }
     }
 
     private var header: some View {
         HStack(spacing: 8) {
             HeaderMark()
-            Text("Claude Code")
+            Text(Self.title(cursorShown: store.cursor.isShown))
                 .font(.system(size: 14, weight: .semibold))
             Spacer()
             Text(summary)
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
         }
+    }
+
+    static func title(cursorShown: Bool) -> String {
+        cursorShown ? "Claude Code + Cursor" : "Claude Code"
     }
 
     private var summary: String {
@@ -306,12 +350,23 @@ struct PanelView: View {
 
 struct UsageCard: View {
     let usage: Usage?
+    let cursor: CursorState
+
+    /// With no Cursor login on this Mac, the card looks exactly as it did before Cursor support.
+    private var showsCursor: Bool { cursor.isShown }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            if showsCursor {
+                GroupLabel(title: "CLAUDE CODE", mark: ClaudeMark.image(height: 8, color: .tertiaryLabelColor))
+            }
             if let usage, usage.fiveHour != nil || usage.sevenDay != nil {
-                if let l = usage.fiveHour { LimitRow(title: "Session", detail: "5 hours", limit: l) }
-                if let l = usage.sevenDay { LimitRow(title: "Weekly", detail: "7 days", limit: l) }
+                if let l = usage.fiveHour {
+                    LimitRow(title: "Session", detail: "5 hours", usedPercent: l.usedPercent, resetsAt: l.resetsAt)
+                }
+                if let l = usage.sevenDay {
+                    LimitRow(title: "Weekly", detail: "7 days", usedPercent: l.usedPercent, resetsAt: l.resetsAt)
+                }
                 if usage.updatedAt < Date().addingTimeInterval(-15 * 60) {
                     Text("Updated \(Format.ago(usage.updatedAt)) ago")
                         .font(.system(size: 10))
@@ -323,6 +378,10 @@ struct UsageCard: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            if showsCursor {
+                Divider()
+                CursorGroup(state: cursor)
+            }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -330,27 +389,94 @@ struct UsageCard: View {
     }
 }
 
+struct CursorGroup: View {
+    let state: CursorState
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 0) {
+                GroupLabel(title: "CURSOR", mark: CursorMark.image(height: 9, color: .tertiaryLabelColor, style: .normal))
+                Spacer()
+                if let plan = state.usage?.plan {
+                    Text(plan).font(.system(size: 10)).foregroundStyle(.secondary)
+                }
+            }
+            switch state.problem {
+            case .loginExpired?: note(Text("Cursor login expired. Run `cursor-agent` once to refresh it."))
+            case .unavailable?: note(Text("Cursor usage unavailable."))
+            case .offline?, nil: EmptyView()
+            }
+            if let u = state.usage {
+                LimitRow(title: "Premium models", detail: nil, usedPercent: u.premiumPercent, resetsAt: nil)
+                LimitRow(title: "Cursor models", detail: "Auto · Composer · Grok", usedPercent: u.cursorModelsPercent, resetsAt: nil)
+                Text("Overall \(Int(u.totalPercent.rounded()))% used · \(Format.cycleReset(u.cycleEnd, now: Date()))")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                if state.problem != nil {
+                    Text("Updated \(Format.ago(u.fetchedAt)) ago")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                }
+            }
+        }
+    }
+
+    private func note(_ text: Text) -> some View {
+        text.font(.system(size: 11))
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// A small uppercase group heading with a pixel glyph, styled like the session section labels.
+/// The glyph is drawn in a dynamic system colour, which resolves for light or dark at draw time.
+struct GroupLabel: View {
+    let title: String
+    let mark: NSImage
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(nsImage: mark)
+            Text(title)
+                .font(.system(size: 10, weight: .semibold))
+                .tracking(0.6)
+                .foregroundStyle(.tertiary)
+        }
+    }
+}
+
 struct LimitRow: View {
     let title: String
-    let detail: String
-    let limit: Limit
+    let detail: String?
+    let usedPercent: Double
+    let resetsAt: Date?
 
-    private var left: Int { max(0, 100 - Int(limit.usedPercent.rounded())) }
+    private var left: Int { Self.percentLeft(usedPercent) }
+
+    /// Percent left, clamped to 0...100.
+    static func percentLeft(_ used: Double) -> Int {
+        guard used.isFinite else { return 0 }
+        return Int(min(100, max(0, 100 - used)).rounded())
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(alignment: .firstTextBaseline) {
                 Text(title).font(.system(size: 12, weight: .medium))
-                Text(detail).font(.system(size: 10)).foregroundStyle(.tertiary)
+                if let detail {
+                    Text(detail).font(.system(size: 10)).foregroundStyle(.tertiary)
+                }
                 Spacer()
                 Text("\(left)% left")
                     .font(.system(size: 12, weight: .semibold).monospacedDigit())
                     .foregroundStyle(left <= 10 ? Color.red : .primary)
             }
-            Bar(fraction: limit.usedPercent / 100, color: Format.levelColor(limit.usedPercent))
-            Text("Resets \(Format.reset(limit.resetsAt))")
-                .font(.system(size: 10))
-                .foregroundStyle(.secondary)
+            Bar(fraction: usedPercent / 100, color: Format.levelColor(usedPercent))
+            if let resetsAt {
+                Text("Resets \(Format.reset(resetsAt))")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 }
@@ -491,6 +617,26 @@ enum Format {
         let f = DateFormatter()
         f.dateFormat = "EEE h:mm a"
         return f.string(from: date)
+    }
+
+    /// "Resets Nov 9 · in 6 days" for Cursor's billing cycle.
+    static func cycleReset(_ end: Date, now: Date, calendar: Calendar = .current) -> String {
+        let s = end.timeIntervalSince(now)
+        if s <= 0 { return "Resets soon" }
+        let f = DateFormatter()
+        f.calendar = calendar
+        f.timeZone = calendar.timeZone
+        f.locale = calendar.locale ?? .current
+        f.dateFormat = "MMM d"
+        let days = Int(s / 86400)
+        let left: String
+        if days >= 1 {
+            left = days == 1 ? "1 day" : "\(days) days"
+        } else {
+            let hours = max(1, Int(s / 3600))
+            left = hours == 1 ? "1 hour" : "\(hours) hours"
+        }
+        return "Resets \(f.string(from: end)) · in \(left)"
     }
 
     static func capitalized(_ s: String) -> String {

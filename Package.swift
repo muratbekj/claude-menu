@@ -5,6 +5,7 @@ let package = Package(
     name: "ClaudeMenu",
     platforms: [.macOS(.v14)],
     targets: [
-        .executableTarget(name: "ClaudeMenu", path: "Sources/ClaudeMenu")
+        .executableTarget(name: "ClaudeMenu", path: "Sources/ClaudeMenu"),
+        .testTarget(name: "ClaudeMenuTests", dependencies: ["ClaudeMenu"], path: "Tests/ClaudeMenuTests"),
     ]
 )
