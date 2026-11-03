@@ -51,6 +51,13 @@ enum CursorMark {
         return result
     }
 
+    /// The colour at `shade` times its own opacity. Dynamic system colours are resolved for the
+    /// current appearance first, so call this at draw time.
+    static func shaded(_ color: NSColor, _ shade: CGFloat) -> NSColor {
+        let base = color.usingColorSpace(.sRGB) ?? color
+        return base.withAlphaComponent(base.alphaComponent * shade)
+    }
+
     /// `height` is the drawn height in points; pixels are square.
     static func image(height: CGFloat, color: NSColor, style: Style) -> NSImage {
         let p = height / CGFloat(grid.count)
@@ -63,7 +70,7 @@ enum CursorMark {
                 for px in pixels where px.alpha == alpha {
                     path.appendRect(NSRect(x: CGFloat(px.x) * p, y: CGFloat(px.y) * p, width: p, height: p))
                 }
-                color.withAlphaComponent(alpha).setFill()
+                shaded(color, alpha).setFill()
                 path.fill()
             }
             return true

@@ -253,7 +253,7 @@ struct PanelView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
-            UsageCard(usage: store.usage)
+            UsageCard(usage: store.usage, cursor: store.cursor)
 
             if store.waiting.isEmpty && store.busy.isEmpty {
                 Text("No sessions working right now")
@@ -346,12 +346,25 @@ struct PanelView: View {
 
 struct UsageCard: View {
     let usage: Usage?
+    let cursor: CursorState
+
+    /// With no Cursor login on this Mac, the card looks exactly as it did before Cursor support.
+    private var showsCursor: Bool {
+        cursor.usage != nil || cursor.problem == .loginExpired || cursor.problem == .unavailable
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            if showsCursor {
+                GroupLabel(title: "CLAUDE CODE", mark: ClaudeMark.image(height: 8, color: .tertiaryLabelColor))
+            }
             if let usage, usage.fiveHour != nil || usage.sevenDay != nil {
-                if let l = usage.fiveHour { LimitRow(title: "Session", detail: "5 hours", limit: l) }
-                if let l = usage.sevenDay { LimitRow(title: "Weekly", detail: "7 days", limit: l) }
+                if let l = usage.fiveHour {
+                    LimitRow(title: "Session", detail: "5 hours", usedPercent: l.usedPercent, resetsAt: l.resetsAt)
+                }
+                if let l = usage.sevenDay {
+                    LimitRow(title: "Weekly", detail: "7 days", usedPercent: l.usedPercent, resetsAt: l.resetsAt)
+                }
                 if usage.updatedAt < Date().addingTimeInterval(-15 * 60) {
                     Text("Updated \(Format.ago(usage.updatedAt)) ago")
                         .font(.system(size: 10))
@@ -363,6 +376,10 @@ struct UsageCard: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            if showsCursor {
+                Divider()
+                CursorGroup(state: cursor)
+            }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -370,27 +387,88 @@ struct UsageCard: View {
     }
 }
 
+struct CursorGroup: View {
+    let state: CursorState
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 0) {
+                GroupLabel(title: "CURSOR", mark: CursorMark.image(height: 9, color: .tertiaryLabelColor, style: .normal))
+                Spacer()
+                if let plan = state.usage?.plan {
+                    Text(plan).font(.system(size: 10)).foregroundStyle(.secondary)
+                }
+            }
+            switch state.problem {
+            case .loginExpired?: note(Text("Cursor login expired. Run `cursor-agent` once to refresh it."))
+            case .unavailable?: note(Text("Cursor usage unavailable."))
+            case .offline?, nil: EmptyView()
+            }
+            if let u = state.usage {
+                LimitRow(title: "Premium models", detail: nil, usedPercent: u.premiumPercent, resetsAt: nil)
+                LimitRow(title: "Cursor models", detail: "Auto · Composer · Grok", usedPercent: u.cursorModelsPercent, resetsAt: nil)
+                Text("Overall \(Int(u.totalPercent.rounded()))% used · \(Format.cycleReset(u.cycleEnd, now: Date()))")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                if state.problem != nil {
+                    Text("Updated \(Format.ago(u.fetchedAt)) ago")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                }
+            }
+        }
+    }
+
+    private func note(_ text: Text) -> some View {
+        text.font(.system(size: 11))
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// A small uppercase group heading with a pixel glyph, styled like the session section labels.
+/// The glyph is drawn in a dynamic system colour, which resolves for light or dark at draw time.
+struct GroupLabel: View {
+    let title: String
+    let mark: NSImage
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(nsImage: mark)
+            Text(title)
+                .font(.system(size: 10, weight: .semibold))
+                .tracking(0.6)
+                .foregroundStyle(.tertiary)
+        }
+    }
+}
+
 struct LimitRow: View {
     let title: String
-    let detail: String
-    let limit: Limit
+    let detail: String?
+    let usedPercent: Double
+    let resetsAt: Date?
 
-    private var left: Int { max(0, 100 - Int(limit.usedPercent.rounded())) }
+    private var left: Int { max(0, 100 - Int(usedPercent.rounded())) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(alignment: .firstTextBaseline) {
                 Text(title).font(.system(size: 12, weight: .medium))
-                Text(detail).font(.system(size: 10)).foregroundStyle(.tertiary)
+                if let detail {
+                    Text(detail).font(.system(size: 10)).foregroundStyle(.tertiary)
+                }
                 Spacer()
                 Text("\(left)% left")
                     .font(.system(size: 12, weight: .semibold).monospacedDigit())
                     .foregroundStyle(left <= 10 ? Color.red : .primary)
             }
-            Bar(fraction: limit.usedPercent / 100, color: Format.levelColor(limit.usedPercent))
-            Text("Resets \(Format.reset(limit.resetsAt))")
-                .font(.system(size: 10))
-                .foregroundStyle(.secondary)
+            Bar(fraction: usedPercent / 100, color: Format.levelColor(usedPercent))
+            if let resetsAt {
+                Text("Resets \(Format.reset(resetsAt))")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 }

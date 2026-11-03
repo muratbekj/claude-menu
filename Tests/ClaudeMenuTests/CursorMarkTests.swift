@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 import Testing
 @testable import ClaudeMenu
 
@@ -41,4 +41,10 @@ private func alpha(_ pixels: [(x: Int, y: Int, alpha: CGFloat)], _ x: Int, _ y: 
         #expect(g.x == n.x && g.y == n.y)
         #expect(abs(g.alpha - n.alpha * 0.35) < 0.0001)
     }
+}
+
+@Test func shadeKeepsBaseColorAlpha() {
+    let shaded = CursorMark.shaded(NSColor(white: 0, alpha: 0.5), 0.72)
+    #expect(abs(shaded.alphaComponent - 0.36) < 0.0001)
+    #expect(abs(CursorMark.shaded(.black, 0.42).alphaComponent - 0.42) < 0.0001)
 }
