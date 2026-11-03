@@ -9,6 +9,11 @@ enum SessionState: Equatable {
     case idle
 }
 
+enum SessionSource: Equatable {
+    case claude
+    case cursor
+}
+
 struct Session: Identifiable, Equatable {
     let id: String
     let pid: pid_t
@@ -18,6 +23,7 @@ struct Session: Identifiable, Equatable {
     let state: SessionState
     let since: Date
     let context: Double?  // percent of context window used, 0...100
+    let source: SessionSource
 }
 
 struct Limit: Equatable {
@@ -42,6 +48,7 @@ final class Store: ObservableObject {
 
     private let claudeDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude")
     private var statusDir: URL { claudeDir.appendingPathComponent("claude-menu/status") }
+    private let cursorSessions = CursorSessionReader()
     private var transcriptCache: [URL: (mtime: Date, tokens: Double, model: String?)] = [:]
     private var timer: Timer?
     private let cursorFetcher = CursorFetcher(deps: .live)
@@ -102,12 +109,12 @@ final class Store: ObservableObject {
             }
         }
 
-        let newSessions = loadSessions().map { raw in
+        let newSessions = (loadSessions().map { raw in
             var s = raw
             let ctx = (payloads[s.id]?.json["context_window"] as? [String: Any])?["used_percentage"] as? Double
             s.context = ctx ?? transcriptContext(sessionId: s.id, cwd: s.cwd, windows: windowByModel)
             return s.session
-        }
+        } + cursorSessions.sessions())
         .sorted { a, b in
             if a.state == .idle, b.state == .idle { return a.since > b.since }
             if case .waiting = a.state, case .waiting = b.state { return a.since < b.since }
@@ -131,7 +138,7 @@ final class Store: ObservableObject {
 
         var session: Session {
             Session(id: id, pid: pid, name: name, folder: (cwd as NSString).lastPathComponent,
-                    isBackground: isBackground, state: state, since: since, context: context)
+                    isBackground: isBackground, state: state, since: since, context: context, source: .claude)
         }
     }
 
