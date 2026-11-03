@@ -35,6 +35,7 @@ struct Usage: Equatable {
 final class Store: ObservableObject {
     @Published private(set) var sessions: [Session] = []
     @Published private(set) var usage: Usage?
+    @Published private(set) var cursor = CursorState()
     @Published var launchAtLogin = SMAppService.mainApp.status == .enabled {
         didSet { setLaunchAtLogin(launchAtLogin) }
     }
@@ -43,10 +44,17 @@ final class Store: ObservableObject {
     private var statusDir: URL { claudeDir.appendingPathComponent("claude-menu/status") }
     private var transcriptCache: [URL: (mtime: Date, tokens: Double, model: String?)] = [:]
     private var timer: Timer?
+    private let cursorFetcher = CursorFetcher(deps: .live)
+    private var cursorTimer: Timer?
+    private var cursorFetching = false
+    private var lastCursorFetch: Date?
 
     var waiting: [Session] { sessions.filter { if case .waiting = $0.state { return true } else { return false } } }
     var busy: [Session] { sessions.filter { $0.state == .busy } }
     var idle: [Session] { sessions.filter { $0.state == .idle } }
+
+    /// The Cursor number the menu bar shows, if any.
+    var cursorBadge: CursorBadge? { CursorBadge.from(cursor.usage, now: Date()) }
 
     /// Out of session or weekly usage until the window resets.
     var limitReached: Bool {
@@ -57,6 +65,27 @@ final class Store: ObservableObject {
         refresh()
         timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.refresh() }
+        }
+        fetchCursor()
+        cursorTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.fetchCursor() }
+        }
+    }
+
+    /// Cursor usage is fetched every 5 minutes, and when the panel opens if the last fetch is over a minute old.
+    func panelOpened() {
+        if let last = lastCursorFetch, Date().timeIntervalSince(last) <= 60 { return }
+        fetchCursor()
+    }
+
+    private func fetchCursor() {
+        guard !cursorFetching else { return }
+        cursorFetching = true
+        lastCursorFetch = Date()
+        Task {
+            let state = await cursorFetcher.fetch(now: Date())
+            if state != cursor { cursor = state }
+            cursorFetching = false
         }
     }
 

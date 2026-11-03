@@ -240,6 +240,7 @@ struct PanelView: View {
         .frame(width: 340)
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
             Waver.shared.greet()
+            store.panelOpened()
         }
     }
 
