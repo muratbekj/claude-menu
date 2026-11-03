@@ -95,7 +95,14 @@ enum MenuBarIcon {
         if waiting > 0 {
             return draw(text: "\(waiting)", color: .systemOrange, pose: pose)
         }
-        return draw(text: store.usage?.fiveHour.map { "\(Int($0.usedPercent.rounded()))%" }, color: nil, pose: pose)
+        return draw(text: text(claudeUsed: store.usage?.fiveHour?.usedPercent, badge: nil), color: nil, pose: pose)
+    }
+
+    /// "42%" for Claude alone; "42/15" with Cursor's number after the slash.
+    static func text(claudeUsed: Double?, badge: CursorBadge?) -> String? {
+        let claude = claudeUsed.map { "\(Int($0.rounded()))" }
+        guard let badge else { return claude.map { "\($0)%" } }
+        return "\(claude ?? "–")/\(badge.displayPercent)"
     }
 
     private static func draw(text: String?, color: NSColor?, pose: ClaudeMark.Pose) -> NSImage {
@@ -491,6 +498,26 @@ enum Format {
         let f = DateFormatter()
         f.dateFormat = "EEE h:mm a"
         return f.string(from: date)
+    }
+
+    /// "Resets Nov 9 · in 6 days" for Cursor's billing cycle.
+    static func cycleReset(_ end: Date, now: Date, calendar: Calendar = .current) -> String {
+        let s = end.timeIntervalSince(now)
+        if s <= 0 { return "Resets soon" }
+        let f = DateFormatter()
+        f.calendar = calendar
+        f.timeZone = calendar.timeZone
+        f.locale = calendar.locale ?? .current
+        f.dateFormat = "MMM d"
+        let days = Int(s / 86400)
+        let left: String
+        if days >= 1 {
+            left = days == 1 ? "1 day" : "\(days) days"
+        } else {
+            let hours = max(1, Int(s / 3600))
+            left = hours == 1 ? "1 hour" : "\(hours) hours"
+        }
+        return "Resets \(f.string(from: end)) · in \(left)"
     }
 
     static func capitalized(_ s: String) -> String {

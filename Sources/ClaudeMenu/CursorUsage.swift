@@ -57,3 +57,26 @@ enum JWT {
         return Date(timeIntervalSince1970: exp.doubleValue)
     }
 }
+
+/// What the menu bar shows for Cursor: Premium models until they run out,
+/// then Cursor's own models, then nothing left.
+enum CursorBadge: Equatable {
+    case premium(Double)
+    case cursorModels(Double)
+    case exhausted
+
+    /// Nil when there's no data or it belongs to a billing cycle that has ended.
+    static func from(_ usage: CursorUsage?, now: Date) -> CursorBadge? {
+        guard let usage, now < usage.cycleEnd else { return nil }
+        if usage.premiumPercent < 100 { return .premium(usage.premiumPercent) }
+        if usage.cursorModelsPercent < 100 { return .cursorModels(usage.cursorModelsPercent) }
+        return .exhausted
+    }
+
+    var displayPercent: Int {
+        switch self {
+        case .premium(let p), .cursorModels(let p): return min(100, max(0, Int(p.rounded())))
+        case .exhausted: return 100
+        }
+    }
+}
