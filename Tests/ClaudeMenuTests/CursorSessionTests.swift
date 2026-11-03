@@ -108,13 +108,13 @@ private let conversation = "40e230cc-2eb3-411d-8e1b-25e0288f418c"
 @Test func readerListsWorkingSessionWithChatTitle() throws {
     let f = try Fixture()
     try f.write(pid: 25100, [noise, created, toolUsed])
-    try f.meta(conversation: conversation, #"{"title":"Main Review Pull","cwd":"/Users/murat/github/school/TeamProject"}"#)
+    try f.meta(conversation: conversation, #"{"title":"Fix login bug","cwd":"/Users/me/code/demo-app"}"#)
     let sessions = f.reader(alive: [25100]).sessions()
     #expect(sessions.count == 1)
     let s = try #require(sessions.first)
     #expect(s.pid == 25100)
-    #expect(s.name == "Main Review Pull")
-    #expect(s.folder == "TeamProject")
+    #expect(s.name == "Fix login bug")
+    #expect(s.folder == "demo-app")
     #expect(s.state == .busy)
     #expect(s.source == .cursor)
     #expect(s.context == nil)
@@ -123,8 +123,8 @@ private let conversation = "40e230cc-2eb3-411d-8e1b-25e0288f418c"
 @Test func readerFallsBackToFolderName() throws {
     let f = try Fixture()
     try f.write(pid: 25100, [created])
-    try f.meta(conversation: conversation, #"{"cwd":"/Users/murat/github/povar"}"#)
-    #expect(f.reader(alive: [25100]).sessions().first?.name == "povar")
+    try f.meta(conversation: conversation, #"{"cwd":"/Users/me/code/sample"}"#)
+    #expect(f.reader(alive: [25100]).sessions().first?.name == "sample")
 }
 
 @Test func readerFallsBackToCursorWithoutMeta() throws {
